@@ -196,9 +196,14 @@ void CommonSalLayout::AdjustLayout(ImplLayoutArgs& rArgs)
 //XXX Kashida
 }
 
-void CommonSalLayout::DrawText( SalGraphics& ) const
+void CommonSalLayout::DrawText( SalGraphics& rSalGraphics ) const
 {
     //call platform dependent DrawText functions
+#if defined(_WIN32)
+#elif defined(MACOSX) || defined(IOS)
+#else
+    rSalGraphics.DrawSalLayout( *this, mrServerFont );
+#endif
 }
 
 bool CommonSalLayout::LayoutText(ImplLayoutArgs& rArgs)
@@ -377,7 +382,6 @@ bool CommonSalLayout::LayoutText(ImplLayoutArgs& rArgs)
                 int32_t nYOffset =  pHbPositions[i].y_offset >> 6;
                 int32_t nXAdvance = pHbPositions[i].x_advance >> 6;
                 int32_t nYAdvance = pHbPositions[i].y_advance >> 6;
-
                 Point aNewPos = Point(aCurrPos.X() + nXOffset, -(aCurrPos.Y() + nYOffset));
                 // Definiton of glyphitem may have to change to support system graphics lib
                 const GlyphItem aGI(nCharPos, nGlyphIndex, aNewPos, nGlyphFlags, nXAdvance, nXOffset);
