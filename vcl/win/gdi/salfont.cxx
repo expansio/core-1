@@ -2606,7 +2606,7 @@ void WinSalGraphics::GetGlyphWidths( const PhysicalFontFace* pFont,
     }
 }
 
-void WinSalGraphics::DrawServerFontLayout( const ServerFontLayout& )
+void WinSalGraphics::DrawSalLayout( const GenericSalLayout& )
 {}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

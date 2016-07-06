@@ -52,9 +52,9 @@ X11SalGraphics::GetFontGC()
     return pFontGC_;
 }
 
-void X11SalGraphics::DrawServerFontLayout( const ServerFontLayout& rLayout )
+void X11SalGraphics::DrawSalLayout( const GenericSalLayout& rLayout, const ServerFont& rServerFont )
 {
-    mxTextRenderImpl->DrawServerFontLayout(rLayout);
+    mxTextRenderImpl->DrawSalLayout(rLayout, rServerFont);
 }
 
 const FontCharMapPtr X11SalGraphics::GetFontCharMap() const

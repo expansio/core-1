@@ -116,9 +116,9 @@ SalLayout* SvpSalGraphics::GetTextLayout( ImplLayoutArgs& rArgs, int nFallbackLe
     return m_aTextRenderImpl.GetTextLayout(rArgs, nFallbackLevel);
 }
 
-void SvpSalGraphics::DrawServerFontLayout( const ServerFontLayout& rSalLayout )
+void SvpSalGraphics::DrawSalLayout( const GenericSalLayout& rSalLayout, const ServerFont& rServerFont )
 {
-    m_aTextRenderImpl.DrawServerFontLayout(rSalLayout );
+    m_aTextRenderImpl.DrawSalLayout( rSalLayout, rServerFont );
 }
 
 void SvpSalGraphics::SetTextColor( SalColor nSalColor )
