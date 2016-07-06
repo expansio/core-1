@@ -62,7 +62,12 @@ static hb_blob_t *getFontTable(hb_face_t* /*face*/, hb_tag_t nTableTag, void* pU
 
     hb_blob_t* pBlob = nullptr;
     if (pBuffer != nullptr)
+#if defined(_WIN32)
+        pBlob = hb_blob_create(reinterpret_cast<const char*>(pBuffer), nLength, HB_MEMORY_MODE_READONLY,
+                               const_cast<unsigned char*>(pBuffer), [](void* data){ delete[] reinterpret_cast<unsigned char*>(data); } );
+#else
         pBlob = hb_blob_create(reinterpret_cast<const char*>(pBuffer), nLength, HB_MEMORY_MODE_READONLY, nullptr, nullptr);
+#endif
 
     return pBlob;
 }
@@ -79,11 +84,17 @@ static hb_unicode_funcs_t* getUnicodeFuncs()
 #if defined(_WIN32)
 CommonSalLayout::CommonSalLayout(HDC hDC, const WinFontFace& rWinFontFace, WinFontInstance& rWinFontInstance)
 :   mhDC(hDC),
+    mhFont((HFONT)GetCurrentObject(hDC, OBJ_FONT)),
     mpHBFace(nullptr),
     maFontSelData(rWinFontInstance.maFontSelData)
 {
     WinFontFaceWithHDC rWinFontFaceWithHDC(rWinFontFace, mhDC);
     mpHBFace = hb_face_create_for_tables(getFontTable, &rWinFontFaceWithHDC, nullptr);
+}
+
+void CommonSalLayout::InitFont() const
+{
+    SelectObject( mhDC, mhFont );
 }
 
 #elif defined(MACOSX) || defined(IOS)
@@ -200,6 +211,7 @@ void CommonSalLayout::DrawText( SalGraphics& rSalGraphics ) const
 {
     //call platform dependent DrawText functions
 #if defined(_WIN32)
+    rSalGraphics.DrawSalLayout( *this );
 #elif defined(MACOSX) || defined(IOS)
 #else
     rSalGraphics.DrawSalLayout( *this, mrServerFont );
@@ -210,6 +222,12 @@ bool CommonSalLayout::LayoutText(ImplLayoutArgs& rArgs)
 {
     //XXX WinLayout object DOESN'T derive from GSL
     GenericSalLayout& rLayout = *this;
+
+// HACK. TODO: Get rid of HACK
+#if defined(_WIN32)
+    if(maFontSelData.mnWidth)
+        maFontSelData.mnWidth = (double)maFontSelData.mnWidth*1.812;
+#endif
 
     hb_font_t* pHBFont = hb_font_create(mpHBFace);
     hb_font_set_ppem(pHBFont, maFontSelData.mnWidth? maFontSelData.mnWidth:maFontSelData.mnHeight , maFontSelData.mnHeight);

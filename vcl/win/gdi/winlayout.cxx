@@ -34,6 +34,7 @@
 
 #include "sft.hxx"
 #include "sallayout.hxx"
+#include "CommonSalLayout.hxx"
 
 #include <cstdio>
 #include <cstdlib>
@@ -3967,66 +3968,74 @@ SalLayout* WinSalGraphics::GetTextLayout( ImplLayoutArgs& rArgs, int nFallbackLe
     const WinFontFace& rFontFace = *mpWinFontData[ nFallbackLevel ];
     WinFontInstance& rFontInstance = *mpWinFontEntry[ nFallbackLevel ];
 
-    bool bUseOpenGL = OpenGLHelper::isVCLOpenGLEnabled() && !mbPrinter;
-
-    if (!bUspInited)
-        InitUSP();
-
-    if( !(rArgs.mnFlags & SalLayoutFlags::ComplexDisabled) )
+    if( getenv("SAL_USE_COMMON_LAYOUT") )
     {
-#if ENABLE_GRAPHITE
-        if (rFontFace.SupportsGraphite())
-        {
-            pWinLayout = new GraphiteWinLayout(getHDC(), rFontFace, rFontInstance, bUseOpenGL);
-        }
-        else
-#endif // ENABLE_GRAPHITE
-        {
-            // script complexity is determined in upper layers
-            pWinLayout = new UniscribeLayout(getHDC(), rFontFace, rFontInstance, bUseOpenGL);
-            // NOTE: it must be guaranteed that the WinSalGraphics lives longer than
-            // the created UniscribeLayout, otherwise the data passed into the
-            // constructor might become invalid too early
-        }
+        CommonSalLayout* pCommonSalLayout = new CommonSalLayout( getHDC(), rFontFace, rFontInstance );
+        return pCommonSalLayout;
     }
     else
     {
+        bool bUseOpenGL = OpenGLHelper::isVCLOpenGLEnabled() && !mbPrinter;
+
+        if (!bUspInited)
+            InitUSP();
+
+        if( !(rArgs.mnFlags & SalLayoutFlags::ComplexDisabled) )
+        {
 #if ENABLE_GRAPHITE
-        if (rFontFace.SupportsGraphite())
-        {
-            pWinLayout = new GraphiteWinLayout(getHDC(), rFontFace, rFontInstance, bUseOpenGL);
-        }
-        else
-#endif // ENABLE_GRAPHITE
-        {
-            static bool bAvoidSimpleWinLayout = (std::getenv("VCL_NO_SIMPLEWINLAYOUT") != NULL);
-
-            if (!bAvoidSimpleWinLayout)
+            if (rFontFace.SupportsGraphite())
             {
-                if( (rArgs.mnFlags & SalLayoutFlags::KerningPairs) && !rFontInstance.HasKernData() )
-                {
-                    // TODO: directly cache kerning info in the rFontInstance
-                    // TODO: get rid of kerning methods+data in WinSalGraphics object
-                    GetKernPairs();
-                    rFontInstance.SetKernData( mnFontKernPairCount, mpFontKernPairs );
-                }
-
-                pWinLayout = new SimpleWinLayout(getHDC(), rFontFace, rFontInstance, bUseOpenGL);
+                pWinLayout = new GraphiteWinLayout(getHDC(), rFontFace, rFontInstance, bUseOpenGL);
             }
             else
+#endif // ENABLE_GRAPHITE
             {
+                // script complexity is determined in upper layers
                 pWinLayout = new UniscribeLayout(getHDC(), rFontFace, rFontInstance, bUseOpenGL);
                 // NOTE: it must be guaranteed that the WinSalGraphics lives longer than
                 // the created UniscribeLayout, otherwise the data passed into the
                 // constructor might become invalid too early
             }
         }
+        else
+        {
+#if ENABLE_GRAPHITE
+            if (rFontFace.SupportsGraphite())
+            {
+                pWinLayout = new GraphiteWinLayout(getHDC(), rFontFace, rFontInstance, bUseOpenGL);
+            }
+            else
+#endif // ENABLE_GRAPHITE
+            {
+                static bool bAvoidSimpleWinLayout = (std::getenv("VCL_NO_SIMPLEWINLAYOUT") != NULL);
+
+                if (!bAvoidSimpleWinLayout)
+                {
+                    if( (rArgs.mnFlags & SalLayoutFlags::KerningPairs) && !rFontInstance.HasKernData() )
+                    {
+                        // TODO: directly cache kerning info in the rFontInstance
+                        // TODO: get rid of kerning methods+data in WinSalGraphics object
+                        GetKernPairs();
+                        rFontInstance.SetKernData( mnFontKernPairCount, mpFontKernPairs );
+                    }
+
+                    pWinLayout = new SimpleWinLayout(getHDC(), rFontFace, rFontInstance, bUseOpenGL);
+                }
+                else
+                {
+                    pWinLayout = new UniscribeLayout(getHDC(), rFontFace, rFontInstance, bUseOpenGL);
+                    // NOTE: it must be guaranteed that the WinSalGraphics lives longer than
+                    // the created UniscribeLayout, otherwise the data passed into the
+                    // constructor might become invalid too early
+                }
+            }
+        }
+
+        if( mfFontScale[nFallbackLevel] != 1.0 )
+            pWinLayout->SetFontScale( mfFontScale[nFallbackLevel] );
+
+        return pWinLayout;
     }
-
-    if( mfFontScale[nFallbackLevel] != 1.0 )
-        pWinLayout->SetFontScale( mfFontScale[nFallbackLevel] );
-
-    return pWinLayout;
 }
 
 int    WinSalGraphics::GetMinKashidaWidth()
@@ -4133,6 +4142,41 @@ LogicalFontInstance* WinFontFace::CreateFontInstance( FontSelectPattern& rFSD ) 
 {
     LogicalFontInstance* pFontInstance = new WinFontInstance( rFSD );
     return pFontInstance;
+}
+
+void WinSalGraphics::DrawSalLayout( const GenericSalLayout& rLayout )
+{
+    HDC hDC = getHDC();
+
+    Point aStartPos;
+    sal_GlyphId aGlyphId;
+    int nFetchedGlyphs = 0 ;
+
+    UINT oldTa = GetTextAlign( hDC );
+    SetTextAlign( hDC, ( oldTa & ~TA_NOUPDATECP ) );
+
+    while( rLayout.GetNextGlyphs( 1, &aGlyphId, aStartPos, nFetchedGlyphs ) )
+    {
+        std::vector<uint16_t> aGlyphIds;
+        std::vector<const int> aGlyphDx;
+        Point aCurPos, aNextPos;
+        int nGlyphCount;
+
+        aGlyphIds.push_back( aGlyphId & GF_IDXMASK );
+        aCurPos = aStartPos;
+        nGlyphCount = 1;
+
+        for( ; nGlyphCount < 8192 && rLayout.GetNextGlyphs( 1, &aGlyphId, aNextPos, nFetchedGlyphs ); nGlyphCount++ )
+        {
+            aGlyphIds.push_back( aGlyphId & GF_IDXMASK );
+            aGlyphDx.push_back( (aNextPos.X() - aCurPos.X()) );
+            aCurPos = aNextPos;
+        }
+
+        ExtTextOutW( hDC, aStartPos.X(), aStartPos.Y(), ETO_GLYPH_INDEX, nullptr, reinterpret_cast<LPCWSTR>( aGlyphIds.data() ),
+                     nGlyphCount, aGlyphDx.data() );
+    }
+    SetTextAlign(hDC, oldTa);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */
